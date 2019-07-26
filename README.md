@@ -5,7 +5,11 @@ Currently just contains a basic sample that uses Windows.UI.Composition to draw 
 
 * Requires Rust nightly
 
-* Currently depends on the experimental `combase-macro` branch of `winrt-rust`: https://github.com/contextfree/winrt-rust/tree/combase-macro . You can clone it locally with `git clone https://github.com/contextfree/winrt-rust.git -b combase-macro`; you'll need to run this from `rust-winui-experiments`'s parent directory, so it gets cloned into a sibling directory (e.g. `/repos/winrt-rust` and `/repos/rust-winui-experiments`) 
+* Currently depends on the experimental `combase-macro` branch of `winrt-rust`: https://github.com/contextfree/winrt-rust/tree/combase-macro . You can clone it locally with 
+
+`git clone https://github.com/contextfree/winrt-rust.git -b combase-macro`
+
+- you'll need to run this from `rust-winui-experiments`'s parent directory, so it gets cloned into a sibling directory (e.g. `/repos/winrt-rust` and `/repos/rust-winui-experiments`) 
 
 Some of this code (the `window.rs` and `window_events.rs` files) is derived from the winit project
 
