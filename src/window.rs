@@ -1,3 +1,8 @@
+// The code in this file is derived from the winit project ( https://github.com/rust-windowing/winit ), 
+// created by the winit contributors including Pierre Krieger and Francesca Plebani. 
+// It has been extensively modified to remove most functionality not needed by the present project.
+// winit is licensed under Apache License 2.0 which can be found in this project as "LICENSE_winit"
+
 use libc;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
