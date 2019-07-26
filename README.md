@@ -1,7 +1,7 @@
 # rust-winui-experiments
 Rust + Windows Composition and WinUI experiments and samples
 
-Currently just contains a basic sample that uses Windows.UI.Composition to draw some squares in a Win32 window.
+Currently just contains a basic sample that uses Windows.UI.Composition to draw some squares in a Win32 window. Its code should show both the capabilities of our `winrt-rust` projection and what it's still missing (e.g., because we don't yet support WinRT inheritance, using Composition subclasses like `SpriteVisual` requires extra calls to `query_interface` and unsafe `transmute`)
 
 * Requires Rust nightly
 
