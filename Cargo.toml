@@ -1,0 +1,11 @@
+[package]
+name = "fsa_rust" # the name of the package
+version = "0.1.0"    # the current version, obeying semver
+authors = ["Max Strini <max@waldtaube.net>"]
+build = "build.rs"
+
+[dependencies]
+winrt = { path = "../../src/winrt-rust", features = ["windows-system", "windows-ui"] }
+winapi = { version = "0.3.7", features = ["winbase", "winuser", "errhandlingapi", "libloaderapi" ] }
+bitflags = "1"
+libc = "0.2"
