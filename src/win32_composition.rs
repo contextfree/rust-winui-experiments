@@ -1,21 +1,31 @@
 use std::mem::{size_of, transmute};
 use std::ptr;
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
-use winrt::windows::foundation::numerics::{Vector2, Vector3};
-use winrt::windows::system::IDispatcherQueueController;
-use winrt::windows::ui::composition::desktop::IDesktopWindowTarget;
-use winrt::windows::ui::composition::{
-  Compositor, ContainerVisual, ICompositionTarget, IVisual, IVisual2, Visual,
-};
-use winrt::{ComInterface, RtDefaultConstructible};
+// use winapi::shared::minwindef::BOOL;
+// use winapi::shared::windef::HWND;
 
-use nresult::NResult;
-use window::{Window, WindowExt};
-use windows_ui_composition_interop::ICompositorDesktopInterop;
-use DispatcherQueue::{
-  CreateDispatcherQueueController, DispatcherQueueOptions, DQTAT_COM_ASTA, DQTYPE_THREAD_CURRENT,
+// mod bindings
+// mod bindings {
+//   ::windows::include_bindings!();
+// }
+
+use bindings::{
+  windows::foundation::numerics::{Vector2, Vector3},
+  windows::system::DispatcherQueueController,
+  windows::ui::composition::desktop::DesktopWindowTarget,
+  windows::ui::composition::{
+    Compositor, ContainerVisual, ICompositionTarget, IVisual, IVisual2, Visual,
+  },
+  windows::{Interface, Abi, BOOL},
+  windows::win32::winrt::ICompositorDesktopInterop,
+  windows::win32::system_services::{
+     CreateDispatcherQueueController, DispatcherQueueOptions, DISPATCHERQUEUE_THREAD_APARTMENTTYPE, DISPATCHERQUEUE_THREAD_TYPE
+  },
+  windows::win32::windows_and_messaging::{HWND, HWND_abi}
 };
+
+
+use crate::nresult::NResult;
+use crate::window::Window;
 
 pub struct Win32CompositionHost {
   pub compositor: Compositor,
@@ -25,16 +35,16 @@ pub struct Win32CompositionHost {
   #[allow(dead_code)]
   target: ICompositionTarget,
   #[allow(dead_code)]
-  dispatcher_queue_controller: IDispatcherQueueController,
+  dispatcher_queue_controller: DispatcherQueueController,
 }
 
 impl Window {
   pub fn create_composition_host(&self) -> NResult<Win32CompositionHost> {
-    let queue: IDispatcherQueueController = init_dispatcher_queue();
-    let comp = winrt::windows::ui::composition::Compositor::new();
+    let queue: DispatcherQueueController = init_dispatcher_queue()?;
+    let comp = Compositor::new()?;
     let target = create_desktop_window_target(&self, &comp)?;
     let comp_root = create_composition_root(&comp, &target)?;
-    let composition_target = target.query_interface::<ICompositionTarget>()?;
+    let composition_target = target.cast::<ICompositionTarget>()?;
     return Ok(Win32CompositionHost {
       compositor: comp,
       root_visual: comp_root,
@@ -44,36 +54,35 @@ impl Window {
   }
 }
 
-pub fn init_dispatcher_queue() -> IDispatcherQueueController {
+pub fn init_dispatcher_queue() -> NResult<DispatcherQueueController> {
   let options = DispatcherQueueOptions {
-    dwSize: size_of::<DispatcherQueueOptions>() as u32,
-    threadType: DQTYPE_THREAD_CURRENT,
-    apartmentType: DQTAT_COM_ASTA,
+    dw_size: size_of::<DispatcherQueueOptions>() as u32,
+    thread_type: DISPATCHERQUEUE_THREAD_TYPE::DQTYPE_THREAD_CURRENT,
+    apartment_type: DISPATCHERQUEUE_THREAD_APARTMENTTYPE::DQTAT_COM_ASTA,
   };
   unsafe {
-    let mut p_controller: *mut <IDispatcherQueueController as ComInterface>::TAbi = ptr::null_mut();
+    let mut controller: Option<DispatcherQueueController> = None;
     CreateDispatcherQueueController(
-      options,
-      (&mut p_controller) as *mut *mut <IDispatcherQueueController as ComInterface>::TAbi,
+      options, &mut controller as *mut _
     );
-    return IDispatcherQueueController::wrap_com(p_controller);
+    return Ok(controller?);
   }
 }
 
 pub fn create_composition_root(
   compositor: &Compositor,
-  target: &IDesktopWindowTarget,
+  target: &DesktopWindowTarget,
 ) -> NResult<ContainerVisual> {
-  let container_visual = compositor.create_container_visual()??;
-  let visual2 = container_visual.query_interface::<IVisual2>()?;
-  visual2.set_relative_size_adjustment(Vector2 { X: 1.0, Y: 1.0 })?;
-  let visual1 = container_visual.query_interface::<IVisual>()?;
+  let container_visual = compositor.create_container_visual()?;
+  let visual2 = container_visual.cast::<IVisual2>()?;
+  visual2.set_relative_size_adjustment(Vector2 { x: 1.0, y: 1.0 })?;
+  let visual1 = container_visual.cast::<IVisual>()?;
   visual1.set_offset(Vector3 {
-    X: 24.0,
-    Y: 24.0,
-    Z: 0.0,
+    x: 24.0,
+    y: 24.0,
+    z: 0.0,
   })?;
-  let composition_target = target.query_interface::<ICompositionTarget>()?;
+  let composition_target = target.cast::<ICompositionTarget>()?;
   unsafe {
     let visual = transmute::<ContainerVisual, Visual>(container_visual.clone());
     composition_target.set_root(&visual)?;
@@ -84,16 +93,14 @@ pub fn create_composition_root(
 pub fn create_desktop_window_target(
   window: &Window,
   compositor: &Compositor,
-) -> NResult<IDesktopWindowTarget> {
-  let hwnd = window.get_hwnd() as HWND;
-  let mut interop = compositor.query_interface::<ICompositorDesktopInterop>()?;
+) -> NResult<DesktopWindowTarget> {
+  let hwnd = window.hwnd();
+  let mut interop = compositor.cast::<ICompositorDesktopInterop>()?;
   unsafe {
-    let mut ret: *mut <IDesktopWindowTarget as ComInterface>::TAbi = ptr::null_mut();
+    let mut ret: Option<DesktopWindowTarget> = None;
     interop.CreateDesktopWindowTarget(
-      hwnd,
-      true as BOOL,
-      (&mut ret) as *mut *mut _ as *mut IDesktopWindowTarget,
+      hwnd, windows::BOOL::from(true), &mut ret as *mut _
     );
-    return Ok(IDesktopWindowTarget::wrap_com(ret));
+    return Ok(ret?);
   }
 }

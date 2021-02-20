@@ -1,5 +1,8 @@
 use std::option::NoneError;
-use winrt::Error;
+
+use bindings::{
+    windows::Error
+};
 
 #[derive(Debug)]
 pub enum NError {

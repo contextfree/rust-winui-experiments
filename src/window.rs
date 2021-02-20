@@ -4,22 +4,44 @@
 // winit is licensed under Apache License 2.0 which can be found in this project as "LICENSE_winit"
 
 use libc;
+use libc::{c_void, wchar_t};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::{
     assert_eq, debug_assert_eq, f64, format, io, isize, mem, panic, ptr, u16, u32, u8, usize,
 };
-use winapi::ctypes::{c_int, wchar_t};
-use winapi::shared::minwindef::{BYTE, DWORD, LPARAM, LRESULT, UINT, WPARAM};
-use winapi::shared::ntdef::{LANG_NEUTRAL, LPCWSTR, MAKELANGID, SUBLANG_DEFAULT};
-use winapi::shared::windef::{HICON, HWND};
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::libloaderapi;
-use winapi::um::winbase::{
-    lstrlenW, FormatMessageW, LocalFree, FORMAT_MESSAGE_ALLOCATE_BUFFER,
-    FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS,
+// use winapi::ctypes::{c_int, wchar_t};
+// use winapi::shared::minwindef::{BYTE, DWORD, LPARAM, LRESULT, UINT, WPARAM};
+// use winapi::shared::ntdef::{LANG_NEUTRAL, LPCWSTR, MAKELANGID, SUBLANG_DEFAULT};
+// use winapi::shared::windef::{HICON, HWND};
+// use winapi::um::errhandlingapi::GetLastError;
+// use winapi::um::libloaderapi;
+// use winapi::um::winbase::{
+//     lstrlenW, FormatMessageW, LocalFree, FORMAT_MESSAGE_ALLOCATE_BUFFER,
+//     FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS,
+// };
+// use winapi::um::winuser;
+
+use bindings::{
+    windows::BOOL,
+    windows::win32::gdi::{HICON, HCURSOR, HBRUSH},
+    // windows::win32::windows_and_messaging::{HWND, LPARAM, WPARAM, ShowWindow, CreateWindowExW, RegisterClassExW, IsGUIThread, GetMessageW, TranslateMessage, DispatchMessageW, PostQuitMessage, DefWindowProcW, WNDCLASSEXW},
+    windows::win32::windows_and_messaging::*,
+    windows::win32::debug::{GetLastError, FormatMessageW},
+    windows::win32::menus_and_resources::{HMENU, CreateIcon, lstrlenW},
+    // windows::win32::system_services::{LocalFree, GetModuleHandleW, CW_USEDEFAULT, SW_SHOW, WM_QUIT, CS_VREDRAW, CS_HREDRAW}
+    windows::win32::system_services::*
 };
-use winapi::um::winuser;
+
+const FORMAT_MESSAGE_ALLOCATE_BUFFER : u32 = 0x00000100;
+const FORMAT_MESSAGE_IGNORE_INSERTS : u32 = 0x00000200;
+const FORMAT_MESSAGE_FROM_SYSTEM : u32 = 0x00001000;
+
+const LANG_NEUTRAL : u16 = 0x00;
+const SUBLANG_DEFAULT : u16 = 0x01;
+
+#[inline]
+pub fn MAKELANGID(p: u16, s: u16) -> u32 { ((s as u32) << 10) | (p as u32) }
 
 /// A size represented in logical pixels.
 ///
@@ -80,17 +102,17 @@ pub fn wchar_to_string(wchar: &[wchar_t]) -> String {
 pub unsafe fn get_last_error() -> Option<String> {
     let err = GetLastError();
     if err != 0 {
-        let buf_addr: LPCWSTR = {
-            let mut buf_addr: LPCWSTR = mem::uninitialized();
+        let buf_addr: *const u16 = {
+            let mut buf_addr: *const u16 = mem::uninitialized();
             FormatMessageW(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER
                     | FORMAT_MESSAGE_FROM_SYSTEM
                     | FORMAT_MESSAGE_IGNORE_INSERTS,
-                ptr::null(),
+                ptr::null_mut(),
                 err,
-                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) as DWORD,
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                 // This is a pointer to a pointer
-                &mut buf_addr as *mut LPCWSTR as *mut _,
+                &mut buf_addr as *mut *const u16 as *mut _,
                 0,
                 ptr::null_mut(),
             );
@@ -100,7 +122,7 @@ pub unsafe fn get_last_error() -> Option<String> {
             let buf_len = lstrlenW(buf_addr) as usize;
             let buf_slice = std::slice::from_raw_parts(buf_addr, buf_len);
             let string = wchar_to_string(buf_slice);
-            LocalFree(buf_addr as *mut _);
+            LocalFree(buf_addr as *mut u16 as isize);
             return Some(string);
         }
     }
@@ -161,11 +183,6 @@ pub struct WindowAttributes {
     ///
     /// The default is `true`.
     pub visible: bool,
-    /// Whether the the window should be transparent. If this is true, writing colors
-    /// with alpha values different than `1.0` will produce a transparent window.
-    ///
-    /// The default is `false`.
-    pub transparent: bool,
     /// Whether the window should have borders and bars.
     ///
     /// The default is `true`.
@@ -191,7 +208,6 @@ impl Default for WindowAttributes {
             title: "winit window".to_owned(),
             maximized: false,
             visible: true,
-            transparent: false,
             decorations: true,
             always_on_top: false,
             window_icon: None,
@@ -222,23 +238,8 @@ impl Window {
     #[inline]
     pub fn show(&self) {
         unsafe {
-            winuser::ShowWindow(self.window.0, winuser::SW_SHOW);
+            ShowWindow(self.window.0, SW_SHOW);
         }
-    }
-}
-
-/// Additional methods on `Window` that are specific to Windows.
-pub trait WindowExt {
-    /// Returns the native handle that is used by this window.
-    ///
-    /// The pointer will become invalid when the native window was destroyed.
-    fn get_hwnd(&self) -> *mut libc::c_void;
-}
-
-impl WindowExt for Window {
-    #[inline]
-    fn get_hwnd(&self) -> *mut libc::c_void {
-        self.hwnd() as *mut _
     }
 }
 
@@ -260,17 +261,17 @@ impl WinIcon {
         }
         assert_eq!(and_mask.len(), pixel_count);
         let handle = unsafe {
-            winuser::CreateIcon(
-                ptr::null_mut(),
-                width as c_int,
-                height as c_int,
+            CreateIcon(
+                HINSTANCE(ptr::null_mut() as *mut c_void as isize),
+                width as i32,
+                height as i32,
                 1,
-                (PIXEL_SIZE * 8) as BYTE,
-                and_mask.as_ptr() as *const BYTE,
-                rgba.as_ptr() as *const BYTE,
+                (PIXEL_SIZE * 8) as u8,
+                and_mask.as_ptr() as *const u8,
+                rgba.as_ptr() as *const u8,
             ) as HICON
         };
-        if !handle.is_null() {
+        if !(handle.0 as *const c_void).is_null() {
             Ok(WinIcon { handle })
         } else {
             Err(WinError::from_last_error())
@@ -286,7 +287,8 @@ bitflags! {
         const ON_TASKBAR     = 1 << 3;
         const ALWAYS_ON_TOP  = 1 << 4;
         const NO_BACK_BUFFER = 1 << 5;
-        const TRANSPARENT    = 1 << 6;
+        // const TRANSPARENT    = 1 << 6;
+        // currently unsupported because WS_EX_LAYERED bindings don't seem to work
         const CHILD          = 1 << 7;
         const MAXIMIZED      = 1 << 8;
 
@@ -312,10 +314,8 @@ bitflags! {
 }
 
 impl WindowFlags {
-    pub fn to_window_styles(self) -> (DWORD, DWORD) {
-        use winapi::um::winuser::*;
-
-        let (mut style, mut style_ex) = (0, 0);
+    pub fn to_window_styles(self) -> (u32, i32) {
+        let (mut style, mut style_ex) = (0u32, 0);
 
         if self.contains(WindowFlags::RESIZABLE) {
             style |= WS_SIZEBOX | WS_MAXIMIZEBOX;
@@ -335,11 +335,6 @@ impl WindowFlags {
         }
         if self.contains(WindowFlags::NO_BACK_BUFFER) {
             style_ex |= WS_EX_NOREDIRECTIONBITMAP;
-        }
-        if self.contains(WindowFlags::TRANSPARENT) {
-            // Is this necessary? The docs say that WS_EX_LAYERED requires a windows class without
-            // CS_OWNDC, and Winit windows have that flag set.
-            style_ex |= WS_EX_LAYERED;
         }
         if self.contains(WindowFlags::CHILD) {
             style |= WS_CHILD; // This is incompatible with WS_POPUP if that gets added eventually.
@@ -400,7 +395,6 @@ impl Window {
             window_flags.set(WindowFlags::DECORATIONS, w_attr.decorations);
             window_flags.set(WindowFlags::ALWAYS_ON_TOP, w_attr.always_on_top);
             window_flags.set(WindowFlags::NO_BACK_BUFFER, pl_attr.no_redirection_bitmap);
-            window_flags.set(WindowFlags::TRANSPARENT, w_attr.transparent);
             // WindowFlags::VISIBLE and MAXIMIZED are set down below after the window has been configured.
             window_flags.set(WindowFlags::RESIZABLE, w_attr.resizable);
             window_flags.set(WindowFlags::CHILD, pl_attr.parent.is_some());
@@ -414,22 +408,22 @@ impl Window {
             // creating the real window this time, by using the functions in `extra_functions`
             let real_window = {
                 let (style, ex_style) = window_flags.to_window_styles();
-                let handle = winuser::CreateWindowExW(
-                    ex_style,
+                let handle = CreateWindowExW(
+                    ex_style as u32,
                     class_name.as_ptr(),
-                    title.as_ptr() as LPCWSTR,
-                    style,
-                    winuser::CW_USEDEFAULT,
-                    winuser::CW_USEDEFAULT,
-                    winuser::CW_USEDEFAULT,
-                    winuser::CW_USEDEFAULT,
-                    pl_attr.parent.unwrap_or(ptr::null_mut()),
-                    ptr::null_mut(),
-                    libloaderapi::GetModuleHandleW(ptr::null()),
+                    title.as_ptr() as *const u16,
+                    style as u32,
+                    CW_USEDEFAULT,
+                    CW_USEDEFAULT,
+                    CW_USEDEFAULT,
+                    CW_USEDEFAULT,
+                    pl_attr.parent.unwrap_or(HWND(ptr::null_mut() as *mut c_void as isize)),
+                    HMENU(ptr::null_mut() as *mut c_void as isize),
+                    HINSTANCE(GetModuleHandleW(ptr::null()) as *mut c_void as isize),
                     ptr::null_mut(),
                 );
 
-                if handle.is_null() {
+                if ((handle.0 as *const c_void).is_null()) {
                     return Err(CreationError::OsError(format!(
                         "CreateWindowEx function failed: {}",
                         format!("{}", io::Error::last_os_error())
@@ -453,7 +447,7 @@ unsafe fn register_window_class(
     window_icon: &Option<WinIcon>,
     taskbar_icon: &Option<WinIcon>,
 ) -> Vec<u16> {
-    let class_name: Vec<_> = std::ffi::OsStr::new("Window Class")
+    let mut class_name: Vec<_> = std::ffi::OsStr::new("Window Class")
         .encode_wide()
         .chain(Some(0).into_iter())
         .collect();
@@ -461,52 +455,52 @@ unsafe fn register_window_class(
     let h_icon = taskbar_icon
         .as_ref()
         .map(|icon| icon.handle)
-        .unwrap_or(ptr::null_mut());
+        .unwrap_or(HICON(ptr::null_mut() as *mut c_void as isize));
 
     let h_icon_small = window_icon
         .as_ref()
         .map(|icon| icon.handle)
-        .unwrap_or(ptr::null_mut());
+        .unwrap_or(HICON(ptr::null_mut() as *mut c_void as isize));
 
-    let class = winuser::WNDCLASSEXW {
-        cbSize: mem::size_of::<winuser::WNDCLASSEXW>() as UINT,
-        style: winuser::CS_HREDRAW | winuser::CS_VREDRAW,
-        lpfnWndProc: Some(callback),
-        cbClsExtra: 0,
-        cbWndExtra: 0,
-        hInstance: libloaderapi::GetModuleHandleW(ptr::null()),
-        hCursor: ptr::null_mut(), // must be null in order for cursor state to work properly
-        hbrBackground: ptr::null_mut(),
-        lpszMenuName: ptr::null(),
-        lpszClassName: class_name.as_ptr(),
-        hIcon: h_icon,
-        hIconSm: h_icon_small,
+    let class = WNDCLASSEXW {
+        cb_size: mem::size_of::<WNDCLASSEXW>() as u32,
+        style: (CS_HREDRAW as u32) | (CS_VREDRAW as u32),
+        lpfn_wnd_proc: Some(callback),
+        cb_cls_extra: 0,
+        cb_wnd_extra: 0,
+        h_instance: HINSTANCE(GetModuleHandleW(ptr::null())),
+        h_cursor: HCURSOR(ptr::null_mut() as *mut c_void as isize), // must be null in order for cursor state to work properly
+        hbr_background: HBRUSH(ptr::null_mut() as *mut c_void as isize),
+        lpsz_menu_name: ptr::null_mut(),
+        lpsz_class_name: class_name.as_mut_ptr(),
+        h_icon: h_icon,
+        h_icon_sm: h_icon_small,
     };
 
     // We ignore errors because registering the same window class twice would trigger
     //  an error, and because errors here are detected during CreateWindowEx anyway.
     // Also since there is no weird element in the struct, there is no reason for this
     //  call to fail.
-    winuser::RegisterClassExW(&class);
+    RegisterClassExW(&class);
     class_name
 }
 
 pub fn run_events_loop() {
     unsafe {
-        winuser::IsGUIThread(1);
+        IsGUIThread(BOOL(1));
 
         let mut msg = mem::uninitialized();
 
         loop {
-            if winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0) == 0 {
+            if GetMessageW(&mut msg, HWND(ptr::null_mut() as *mut c_void as isize), 0, 0) == BOOL(0) {
                 // Only happens if the message is `WM_QUIT`.
-                debug_assert_eq!(msg.message, winuser::WM_QUIT);
+                debug_assert_eq!(msg.message, WM_QUIT as u32);
                 break;
             }
 
             // Calls `callback` below.
-            winuser::TranslateMessage(&msg);
-            winuser::DispatchMessageW(&msg);
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
         }
     }
 }
@@ -519,7 +513,7 @@ where
     match callback_result {
         Ok(lresult) => lresult,
         Err(_) => {
-            winuser::PostQuitMessage(-1);
+            PostQuitMessage(-1);
             error
         }
     }
@@ -532,19 +526,22 @@ where
 //
 // Returning 0 tells the Win32 API that the message has been processed.
 // FIXME: detect WM_DWMCOMPOSITIONCHANGED and call DwmEnableBlurBehindWindow if necessary
-pub unsafe extern "system" fn callback(
+pub extern "system" fn callback(
     window: HWND,
-    msg: UINT,
+    msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    // Unwinding into foreign code is undefined behavior. So we catch any panics that occur in our
-    // code, and if a panic happens we cancel any future operations.
-    run_catch_panic(-1, || callback_inner(window, msg, wparam, lparam))
+    unsafe {
+        // Unwinding into foreign code is
+        // undefined behavior. So we catch any panics that occur in our
+        // code, and if a panic happens we cancel any future operations.
+        run_catch_panic(LRESULT(-1), || callback_inner(window, msg, wparam, lparam))
+    }
 }
 
-unsafe fn callback_inner(window: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe fn callback_inner(window: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
-        _ => winuser::DefWindowProcW(window, msg, wparam, lparam),
+        _ => DefWindowProcW(window, msg, wparam, lparam),
     }
 }
