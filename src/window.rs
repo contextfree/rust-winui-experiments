@@ -10,26 +10,13 @@ use std::os::windows::ffi::OsStrExt;
 use std::{
     assert_eq, debug_assert_eq, f64, format, io, isize, mem, panic, ptr, u16, u32, u8, usize,
 };
-// use winapi::ctypes::{c_int, wchar_t};
-// use winapi::shared::minwindef::{BYTE, DWORD, LPARAM, LRESULT, UINT, WPARAM};
-// use winapi::shared::ntdef::{LANG_NEUTRAL, LPCWSTR, MAKELANGID, SUBLANG_DEFAULT};
-// use winapi::shared::windef::{HICON, HWND};
-// use winapi::um::errhandlingapi::GetLastError;
-// use winapi::um::libloaderapi;
-// use winapi::um::winbase::{
-//     lstrlenW, FormatMessageW, LocalFree, FORMAT_MESSAGE_ALLOCATE_BUFFER,
-//     FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS,
-// };
-// use winapi::um::winuser;
 
 use bindings::{
     windows::BOOL,
     windows::win32::gdi::{HICON, HCURSOR, HBRUSH},
-    // windows::win32::windows_and_messaging::{HWND, LPARAM, WPARAM, ShowWindow, CreateWindowExW, RegisterClassExW, IsGUIThread, GetMessageW, TranslateMessage, DispatchMessageW, PostQuitMessage, DefWindowProcW, WNDCLASSEXW},
     windows::win32::windows_and_messaging::*,
     windows::win32::debug::{GetLastError, FormatMessageW},
     windows::win32::menus_and_resources::{HMENU, CreateIcon, lstrlenW},
-    // windows::win32::system_services::{LocalFree, GetModuleHandleW, CW_USEDEFAULT, SW_SHOW, WM_QUIT, CS_VREDRAW, CS_HREDRAW}
     windows::win32::system_services::*
 };
 
@@ -41,6 +28,7 @@ const LANG_NEUTRAL : u16 = 0x00;
 const SUBLANG_DEFAULT : u16 = 0x01;
 
 #[inline]
+#[allow(non_snake_case)]
 pub fn MAKELANGID(p: u16, s: u16) -> u32 { ((s as u32) << 10) | (p as u32) }
 
 /// A size represented in logical pixels.
@@ -103,7 +91,7 @@ pub unsafe fn get_last_error() -> Option<String> {
     let err = GetLastError();
     if err != 0 {
         let buf_addr: *const u16 = {
-            let mut buf_addr: *const u16 = mem::uninitialized();
+            let mut buf_addr = mem::MaybeUninit::<*const u16>::uninit();
             FormatMessageW(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER
                     | FORMAT_MESSAGE_FROM_SYSTEM
@@ -112,11 +100,11 @@ pub unsafe fn get_last_error() -> Option<String> {
                 err,
                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                 // This is a pointer to a pointer
-                &mut buf_addr as *mut *const u16 as *mut _,
+                buf_addr.as_mut_ptr() as *mut *const u16 as *mut _,
                 0,
                 ptr::null_mut(),
             );
-            buf_addr
+            buf_addr.assume_init()
         };
         if !buf_addr.is_null() {
             let buf_len = lstrlenW(buf_addr) as usize;
@@ -423,7 +411,7 @@ impl Window {
                     ptr::null_mut(),
                 );
 
-                if ((handle.0 as *const c_void).is_null()) {
+                if (handle.0 as *const c_void).is_null() {
                     return Err(CreationError::OsError(format!(
                         "CreateWindowEx function failed: {}",
                         format!("{}", io::Error::last_os_error())
@@ -489,18 +477,20 @@ pub fn run_events_loop() {
     unsafe {
         IsGUIThread(BOOL(1));
 
-        let mut msg = mem::uninitialized();
-
+        let mut msg_uninit = mem::MaybeUninit::<MSG>::uninit();
+        
         loop {
-            if GetMessageW(&mut msg, HWND(ptr::null_mut() as *mut c_void as isize), 0, 0) == BOOL(0) {
+            let get_msg_result = GetMessageW(msg_uninit.as_mut_ptr(), HWND(ptr::null_mut() as *mut c_void as isize), 0, 0);
+            let msg = msg_uninit.assume_init_ref();
+            if get_msg_result == BOOL(0) {
                 // Only happens if the message is `WM_QUIT`.
                 debug_assert_eq!(msg.message, WM_QUIT as u32);
                 break;
             }
 
             // Calls `callback` below.
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+            TranslateMessage(msg);
+            DispatchMessageW(msg);
         }
     }
 }

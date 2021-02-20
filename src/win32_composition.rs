@@ -1,12 +1,4 @@
 use std::mem::{size_of, transmute};
-use std::ptr;
-// use winapi::shared::minwindef::BOOL;
-// use winapi::shared::windef::HWND;
-
-// mod bindings
-// mod bindings {
-//   ::windows::include_bindings!();
-// }
 
 use bindings::{
   windows::foundation::numerics::{Vector2, Vector3},
@@ -15,14 +7,12 @@ use bindings::{
   windows::ui::composition::{
     Compositor, ContainerVisual, ICompositionTarget, IVisual, IVisual2, Visual,
   },
-  windows::{Interface, Abi, BOOL},
+  windows::Interface,
   windows::win32::winrt::ICompositorDesktopInterop,
   windows::win32::system_services::{
      CreateDispatcherQueueController, DispatcherQueueOptions, DISPATCHERQUEUE_THREAD_APARTMENTTYPE, DISPATCHERQUEUE_THREAD_TYPE
-  },
-  windows::win32::windows_and_messaging::{HWND, HWND_abi}
+  }
 };
-
 
 use crate::nresult::NResult;
 use crate::window::Window;
@@ -62,7 +52,7 @@ pub fn init_dispatcher_queue() -> NResult<DispatcherQueueController> {
   };
   unsafe {
     let mut controller: Option<DispatcherQueueController> = None;
-    CreateDispatcherQueueController(
+    let _ = CreateDispatcherQueueController(
       options, &mut controller as *mut _
     );
     return Ok(controller?);
@@ -95,10 +85,10 @@ pub fn create_desktop_window_target(
   compositor: &Compositor,
 ) -> NResult<DesktopWindowTarget> {
   let hwnd = window.hwnd();
-  let mut interop = compositor.cast::<ICompositorDesktopInterop>()?;
+  let interop = compositor.cast::<ICompositorDesktopInterop>()?;
   unsafe {
     let mut ret: Option<DesktopWindowTarget> = None;
-    interop.CreateDesktopWindowTarget(
+    let _ = interop.CreateDesktopWindowTarget(
       hwnd, windows::BOOL::from(true), &mut ret as *mut _
     );
     return Ok(ret?);

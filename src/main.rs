@@ -1,12 +1,9 @@
 #![feature(try_trait)]
-
-// extern crate winapi;
-// extern crate winrt;
+#![feature(maybe_uninit_ref)]
 
 #[macro_use]
 extern crate bitflags;
 extern crate libc;
-mod DispatcherQueue;
 mod nresult;
 mod win32_composition;
 mod window;
@@ -14,16 +11,10 @@ mod windows_ui_composition_interop;
 
 use bindings::{
     windows::foundation::numerics::{Vector2, Vector3},
-    windows::ui::composition::{
-        CompositionBrush, CompositionColorBrush, IVisual, SpriteVisual, Visual,
-    },
-    windows::{Interface, Guid},
     windows::ui::Color
 };
 
 use nresult::NResult;
-use std::mem::transmute;
-
 
 fn main() {
     match window::Window::new(Default::default(), Default::default()) {
