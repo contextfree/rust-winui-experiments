@@ -56,21 +56,15 @@ fn run(window: &window::Window) -> NResult<()> {
                 a: 0xD5,
             };
             let brush = comp.create_color_brush_with_color(color)?;
-            unsafe {
-                child_visual
-                    .set_brush(&transmute::<CompositionColorBrush, CompositionBrush>(brush))?;
-            }
-            let child_visual_ivisual = child_visual.cast::<IVisual>()?;
-            child_visual_ivisual.set_size(Vector2 { x: 100.0, y: 100.0 })?;
-            child_visual_ivisual.set_offset(Vector3 {
+            child_visual.set_brush(brush)?;
+            child_visual.set_size(Vector2 { x: 100.0, y: 100.0 })?;
+            child_visual.set_offset(Vector3 {
                 x: 150.0 * x as f32,
                 y: 150.0 * y as f32,
                 z: 0.0,
             })?;
-            child_visual_ivisual.set_is_visible(true)?;
-            unsafe {
-                children.insert_at_top(&transmute::<SpriteVisual, Visual>(child_visual))?;
-            }
+            child_visual.set_is_visible(true)?;
+            children.insert_at_top(child_visual)?;
         }
     }
     window::run_events_loop();
