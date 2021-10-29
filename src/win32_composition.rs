@@ -11,7 +11,8 @@ use bindings::{
   windows::win32::winrt::ICompositorDesktopInterop,
   windows::win32::system_services::{
      CreateDispatcherQueueController, DispatcherQueueOptions, DISPATCHERQUEUE_THREAD_APARTMENTTYPE, DISPATCHERQUEUE_THREAD_TYPE
-  }
+  },
+  microsoft::graphics::canvas::CanvasDevice
 };
 
 use crate::nresult::NResult;
@@ -20,6 +21,7 @@ use crate::window::Window;
 pub struct Win32CompositionHost {
   pub compositor: Compositor,
   pub root_visual: ContainerVisual,
+  pub canvas: CanvasDevice,
   // root_visual depends on the underlying composition target and
   // dispatcher queue controller being kept alive, so we retain them here
   #[allow(dead_code)]
@@ -35,9 +37,11 @@ impl Window {
     let target = create_desktop_window_target(&self, &comp)?;
     let comp_root = create_composition_root(&comp, &target)?;
     let composition_target = target.cast::<ICompositionTarget>()?;
+    let canvas_device = CanvasDevice::new()?;
     return Ok(Win32CompositionHost {
       compositor: comp,
       root_visual: comp_root,
+      canvas: canvas_device,
       target: composition_target,
       dispatcher_queue_controller: queue,
     });
